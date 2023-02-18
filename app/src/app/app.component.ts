@@ -29,7 +29,6 @@ export class AppComponent {
       // get FCM token
       FCM.getToken().then(token => {
         console.log(token);
-        alert(token)
       });
       // ionic push notification example
       FCM.onNotification().subscribe(data => {
@@ -43,7 +42,6 @@ export class AppComponent {
       // refresh the FCM token
       FCM.onTokenRefresh().subscribe(token => {
         console.log(token);
-        alert(token)
       });
       // unsubscribe from a topic
       // this.fcm.unsubscribeFromTopic('offers');

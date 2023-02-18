@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"bytes"
 )
 
 type Earthquake struct {
@@ -52,6 +53,7 @@ func main() {
 }
 
 func sendNotification(w http.ResponseWriter, r *http.Request) {
+	fcmUrl := "https://fcm.googleapis.com/fcm/send" 
 	origin := haversine.Coord{Lat: 40.770727, Lon: 29.118538}
 	//origin := haversine.Coord{Lat: 37.444156, Lon: 37.188217}
 	maxDistance := 100.0
@@ -105,8 +107,8 @@ func sendNotification(w http.ResponseWriter, r *http.Request) {
 					region,
 					distanceToOrigin,
 				}
-				if earthquake.DistancetoOrigin < maxDistance && earthquake.MagnitudeML > 1.0 {
-					if now.Sub(earthquake.Date).Minutes() > maxTimeRange {
+				if earthquake.DistancetoOrigin < maxDistance && earthquake.MagnitudeML > 2.0 {
+					if now.Sub(earthquake.Date).Minutes() < maxTimeRange {
 						sendMessage = true
 					}
 					nearestEarthquakes = append(nearestEarthquakes, earthquake)
@@ -118,12 +120,27 @@ func sendNotification(w http.ResponseWriter, r *http.Request) {
 		log.Fatalf("failed to fetch data: %d %s", resp.StatusCode, resp.Status)
 	}
 	if sendMessage {
-		title = fmt.Sprintf("Deprem Oldu!!! Toplam: %d \n", len(nearestEarthquakes))
-
+		title = fmt.Sprintf("Earthquake Happened!!!")
+		
+		
 		for _, earthquake = range nearestEarthquakes {
 			message = fmt.Sprintf("%s - %.1fML | %s | %s | Distance: %dkm\n", message, earthquake.MagnitudeML, earthquake.Date.Format("02/01/2006 15:04:05"), earthquake.Region, int(earthquake.DistancetoOrigin))
 		}
-	}
 
-	fmt.Println(message)
+		message = fmt.Sprintf("%s \n Total: %d", message, len(nearestEarthquakes))
+		requestData := fmt.Sprintf("{\"to\": \"/topics/earthquake\",\"notification\": {\"title\": \"%s\",\"body\": \"%s\"}}", title, message)
+		var jsonStr = []byte(requestData)
+		req, err := http.NewRequest("POST", fcmUrl, bytes.NewBuffer(jsonStr))
+		req.Header.Set("Authorization", os.Getenv("TOKEN"))
+		req.Header.Set("Content-Type", "application/json")
+	
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			panic(err)
+		}
+		defer resp.Body.Close()
+	
+		fmt.Println("Response Status:", resp.Status)
+	}
 }
