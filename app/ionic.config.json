@@ -1,5 +1,5 @@
 {
-  "name": "eqalert",
+  "name": "Earthquake Alert",
   "integrations": {
     "cordova": {}
   },
