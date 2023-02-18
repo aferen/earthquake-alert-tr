@@ -141,3 +141,4 @@ app/plugins/
 *.DS_Store
 .idea/
 app/.angular
+app/www
