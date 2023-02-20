@@ -27,7 +27,6 @@ type Earthquake struct {
 
 var (
 	earthquakes        []Earthquake
-	nearestEarthquakes []Earthquake
 	earthquake         Earthquake
 	line               string
 	date               time.Time
@@ -107,11 +106,12 @@ func sendNotification(w http.ResponseWriter, r *http.Request) {
 					region,
 					distanceToOrigin,
 				}
-				if earthquake.DistancetoOrigin < maxDistance && earthquake.MagnitudeML > 2.0 {
+				if (earthquake.DistancetoOrigin < maxDistance && earthquake.MagnitudeML > 2.0) || earthquake.MagnitudeML > 5.0 {
 					if now.Sub(earthquake.Date).Minutes() < maxTimeRange {
 						sendMessage = true
 					}
-					nearestEarthquakes = append(nearestEarthquakes, earthquake)
+					fmt.Println(earthquake.Region)
+					earthquakes = append(earthquakes, earthquake)
 				}
 			}
 			counter++
@@ -123,11 +123,11 @@ func sendNotification(w http.ResponseWriter, r *http.Request) {
 		title = fmt.Sprintf("Earthquake Happened!!!")
 		
 		
-		for _, earthquake = range nearestEarthquakes {
+		for _, earthquake = range earthquakes {
 			message = fmt.Sprintf("%s - %.1fML | %s | %s | Distance: %dkm\n", message, earthquake.MagnitudeML, earthquake.Date.Format("02/01/2006 15:04:05"), earthquake.Region, int(earthquake.DistancetoOrigin))
 		}
 
-		message = fmt.Sprintf("%s \n Total: %d", message, len(nearestEarthquakes))
+		message = fmt.Sprintf("%s \n Total: %d", message, len(earthquakes))
 		requestData := fmt.Sprintf("{\"to\": \"/topics/earthquake\",\"notification\": {\"title\": \"%s\",\"body\": \"%s\"}}", title, message)
 		var jsonStr = []byte(requestData)
 		req, err := http.NewRequest("POST", fcmUrl, bytes.NewBuffer(jsonStr))
