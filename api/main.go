@@ -58,11 +58,12 @@ func sendNotification(w http.ResponseWriter, r *http.Request) {
 	maxDistance := 100.0
 	dateLayout := "2006.01.02T15:04:05 -0700"
 	timezone := "Europe/Istanbul"
-	maxTimeRange := 10.0 //minutes
+	maxTimeRange := 30.0 //minutes
 	location, err := time.LoadLocation(timezone)
 	now := time.Now().In(location)
 	sendMessage := false
 	counter := 0
+	earthquakes = nil
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -106,7 +107,7 @@ func sendNotification(w http.ResponseWriter, r *http.Request) {
 					region,
 					distanceToOrigin,
 				}
-				if (earthquake.DistancetoOrigin < maxDistance && earthquake.MagnitudeML > 2.0) || earthquake.MagnitudeML > 5.0 {
+				if (earthquake.DistancetoOrigin < maxDistance && earthquake.MagnitudeML > 2.0) || earthquake.MagnitudeML >= 5.0 {
 					if now.Sub(earthquake.Date).Minutes() < maxTimeRange {
 						sendMessage = true
 					}
@@ -120,8 +121,9 @@ func sendNotification(w http.ResponseWriter, r *http.Request) {
 		log.Fatalf("failed to fetch data: %d %s", resp.StatusCode, resp.Status)
 	}
 	if sendMessage {
+		fmt.Println("Notification is sending")
 		title = fmt.Sprintf("Earthquake Happened!!!")
-		
+		message = ""
 		
 		for _, earthquake = range earthquakes {
 			message = fmt.Sprintf("%s - %.1fML | %s | %s | Distance: %dkm\n", message, earthquake.MagnitudeML, earthquake.Date.Format("02/01/2006 15:04:05"), earthquake.Region, int(earthquake.DistancetoOrigin))
