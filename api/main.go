@@ -2,16 +2,19 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"crypto/tls"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
 	"github.com/umahmood/haversine"
 	"log"
+	"net"
 	"net/http"
+	"net/smtp"
 	"os"
 	"strconv"
 	"strings"
 	"time"
-	"bytes"
 )
 
 type Earthquake struct {
@@ -26,33 +29,52 @@ type Earthquake struct {
 }
 
 var (
-	earthquakes        []Earthquake
-	earthquake         Earthquake
-	line               string
-	date               time.Time
-	coordinate         haversine.Coord
-	depth              float64
-	magnitudeMD        float64
-	magnitudeML        float64
-	magnitudeMW        float64
-	distanceToOrigin   float64
-	region             string
-	latitude           float64
-	longitude          float64
-	title              string
-	message            string
+	earthquakes      []Earthquake
+	earthquake       Earthquake
+	line             string
+	date             time.Time
+	coordinate       haversine.Coord
+	depth            float64
+	magnitudeMD      float64
+	magnitudeML      float64
+	magnitudeMW      float64
+	distanceToOrigin float64
+	region           string
+	latitude         float64
+	longitude        float64
+	title            string
+	message          string
 )
 
 func main() {
 	listenAddr := os.Getenv("LISTEN_ADDR")
 	addr := listenAddr + `:` + os.Getenv("PORT")
-	http.HandleFunc("/send", sendNotification)
+	http.HandleFunc("/send", send)
 	log.Printf("starting server at %s", addr)
 	log.Fatal(http.ListenAndServe(addr, nil))
 }
 
-func sendNotification(w http.ResponseWriter, r *http.Request) {
-	fcmUrl := "https://fcm.googleapis.com/fcm/send" 
+func sendNotification(title, message string) {
+	fcmUrl := "https://fcm.googleapis.com/fcm/send"
+	fmt.Println("Notification is sending")
+
+	requestData := fmt.Sprintf("{\"to\": \"/topics/earthquake\",\"notification\": {\"title\": \"%s\",\"body\": \"%s\"}}", title, message)
+	var jsonStr = []byte(requestData)
+	req, err := http.NewRequest("POST", fcmUrl, bytes.NewBuffer(jsonStr))
+	req.Header.Set("Authorization", os.Getenv("TOKEN"))
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+
+	fmt.Println("Response Status:", resp.Status)
+}
+
+func send(w http.ResponseWriter, r *http.Request) {
 	origin := haversine.Coord{Lat: 40.770727, Lon: 29.118538}
 	//origin := haversine.Coord{Lat: 37.444156, Lon: 37.188217}
 	maxDistance := 100.0
@@ -121,28 +143,84 @@ func sendNotification(w http.ResponseWriter, r *http.Request) {
 		log.Fatalf("failed to fetch data: %d %s", resp.StatusCode, resp.Status)
 	}
 	if sendMessage {
-		fmt.Println("Notification is sending")
-		title = fmt.Sprintf("Earthquake Happened!!!")
-		message = ""
-		
+		title = fmt.Sprintf("Earthquake Happened⚠️")
+
 		for _, earthquake = range earthquakes {
 			message = fmt.Sprintf("%s - %.1fML | %s | %s | Distance: %dkm\n", message, earthquake.MagnitudeML, earthquake.Date.Format("02/01/2006 15:04:05"), earthquake.Region, int(earthquake.DistancetoOrigin))
 		}
-
 		message = fmt.Sprintf("%s \n Total: %d", message, len(earthquakes))
-		requestData := fmt.Sprintf("{\"to\": \"/topics/earthquake\",\"notification\": {\"title\": \"%s\",\"body\": \"%s\"}}", title, message)
-		var jsonStr = []byte(requestData)
-		req, err := http.NewRequest("POST", fcmUrl, bytes.NewBuffer(jsonStr))
-		req.Header.Set("Authorization", os.Getenv("TOKEN"))
-		req.Header.Set("Content-Type", "application/json")
-	
-		client := &http.Client{}
-		resp, err := client.Do(req)
-		if err != nil {
-			panic(err)
-		}
-		defer resp.Body.Close()
-	
-		fmt.Println("Response Status:", resp.Status)
+		sendEmail(title, message)
+		//sendNotification(title,message)
 	}
+}
+
+func sendEmail(title, message string) {
+	from := os.Getenv("MAIL_FROM")
+	password := os.Getenv("MAIL_TOKEN")
+
+	to := []string{
+		os.Getenv("MAIL_TO"),
+	}
+
+	smtpHost := os.Getenv("MAIL_SERVER")
+	smtpPort := os.Getenv("MAIL_PORT")
+	conn, err := net.Dial("tcp", smtpHost+":"+smtpPort)
+	if err != nil {
+		println(err)
+	}
+
+	c, err := smtp.NewClient(conn, smtpHost)
+	if err != nil {
+		println(err)
+	}
+
+	tlsconfig := &tls.Config{
+		ServerName: smtpHost,
+	}
+
+	if err = c.StartTLS(tlsconfig); err != nil {
+		println(err)
+	}
+
+	auth := LoginAuth(from, password)
+
+	if err = c.Auth(auth); err != nil {
+		println(err)
+	}
+	msg := fmt.Sprintf("From: Earthq <%s>\r\n"+
+		"To: %s\r\n"+
+		"Subject: %s\r\n\r\n"+
+		"%s\r\n", os.Getenv("MAIL_FROM"), os.Getenv("MAIL_TO"), title, message)
+	mail := []byte(msg)
+
+	err = smtp.SendMail(smtpHost+":"+smtpPort, auth, from, to, mail)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Println("Email Sent Successfully!")
+}
+
+type loginAuth struct {
+	username, password string
+}
+
+func LoginAuth(username, password string) smtp.Auth {
+	return &loginAuth{username, password}
+}
+
+func (a *loginAuth) Start(server *smtp.ServerInfo) (string, []byte, error) {
+	return "LOGIN", []byte(a.username), nil
+}
+
+func (a *loginAuth) Next(fromServer []byte, more bool) ([]byte, error) {
+	if more {
+		switch string(fromServer) {
+		case "Username:":
+			return []byte(a.username), nil
+		case "Password:":
+			return []byte(a.password), nil
+		}
+	}
+	return nil, nil
 }
