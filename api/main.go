@@ -85,6 +85,7 @@ func send(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().In(location)
 	sendMessage := false
 	counter := 0
+	message := ""
 	earthquakes = nil
 	if err != nil {
 		fmt.Println(err)
